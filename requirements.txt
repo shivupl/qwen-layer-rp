@@ -1,0 +1,8 @@
+runpod
+pillow
+transformers>=4.51.3
+git+https://github.com/huggingface/diffusers
+accelerate
+safetensors
+
+
