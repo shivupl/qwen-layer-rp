@@ -22,30 +22,9 @@ CACHE_ROOT = Path("/runpod-volume/huggingface-cache/hub")
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
-def str_to_bool(v, default=False):
-    if v is None:
-        return default
-    if isinstance(v, bool):
-        return v
-    s = str(v).strip().lower()
-    if s in ("1", "true", "yes", "y", "on"):
-        return True
-    if s in ("0", "false", "no", "n", "off"):
-        return False
-    return default
 
-def normalize_model_id(raw: str) -> str:
-    s = (raw or "").strip()
-    if not s:
-        return "Qwen/Qwen-Image-Layered"
-    if "huggingface.co/" in s:
-        s = s.split("huggingface.co/", 1)[1]
-    s = s.split(":", 1)[0]
-    org, name = s.split("/", 1)
-    return f"{org}/{name}"
-
-MODEL_ID = normalize_model_id(os.getenv("MODEL_ID", "Qwen/Qwen-Image-Layered"))
-LOCAL_FILES_ONLY = str_to_bool(os.getenv("LOCAL_FILES_ONLY", "true"), default=True)
+MODEL_ID = "Qwen/Qwen-Image-Layered"
+LOCAL_FILES_ONLY = True
 
 ## new s3 stuff
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
@@ -161,18 +140,13 @@ def load_pipe():
     # Model card uses bf16 on CUDA. :contentReference[oaicite:2]{index=2}
     _PIPE = QwenImageLayeredPipeline.from_pretrained(
         str(snapshot_path),
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,   #remove for fp8
         local_files_only=LOCAL_FILES_ONLY,
         device_map="cuda",
     )
 
     _PIPE.set_progress_bar_config(disable=True)
     return _PIPE
-
-# def pil_to_b64_png(img: Image.Image) -> str:
-#     buf = BytesIO()
-#     img.save(buf, format="PNG")
-#     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 def b64_to_pil_rgba(b64: str) -> Image.Image:
     data = base64.b64decode(b64)
@@ -192,9 +166,8 @@ def handler(job):
     steps = int(inp.get("steps", 50))
     true_cfg_scale = float(inp.get("true_cfg_scale", 4.0))
     negative_prompt = inp.get("negative_prompt", " ")
-    cfg_normalize = str_to_bool(inp.get("cfg_normalize", True), default=True)
-    use_en_prompt = str_to_bool(inp.get("use_en_prompt", True), default=True)
-
+    cfg_normalize = True
+    use_en_prompt = True
     seed = int(inp.get("seed", 777))
 
     pipe = load_pipe()
