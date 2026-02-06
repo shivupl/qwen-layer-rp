@@ -2,6 +2,8 @@ import os
 import base64
 from io import BytesIO
 from pathlib import Path
+import requests
+
 
 import torch
 import runpod
@@ -33,6 +35,7 @@ S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY")
 S3_BUCKET = os.getenv("S3_BUCKET")
 S3_URL_TTL_SECONDS = int(os.getenv("S3_URL_TTL_SECONDS", "3600"))
 S3_PREFIX = os.getenv("S3_PREFIX", "layer-outputs")
+S3_PUBLIC_BASE_URL = os.getenv("S3_PUBLIC_BASE_URL")
 
 
 _S3 = None
@@ -73,12 +76,7 @@ def upload_png_and_get_url(key: str, png_bytes: bytes) -> str:
         ContentType="image/png",
     )
 
-    # Otherwise return a signed URL (recommended for testing)
-    return s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": S3_BUCKET, "Key": key},
-        ExpiresIn=S3_URL_TTL_SECONDS,
-    )
+    return f"{S3_PUBLIC_BASE_URL}/{key}"
 
 ## end of new S3 stuff
 
@@ -148,17 +146,28 @@ def load_pipe():
     _PIPE.set_progress_bar_config(disable=True)
     return _PIPE
 
-def b64_to_pil_rgba(b64: str) -> Image.Image:
-    data = base64.b64decode(b64)
-    img = Image.open(BytesIO(data))
+# def b64_to_pil_rgba(b64: str) -> Image.Image:
+#     data = base64.b64decode(b64)
+#     img = Image.open(BytesIO(data))
+#     return img.convert("RGBA")
+
+
+def url_to_pil_rgba(image_url: str) -> Image.Image:
+    resp = requests.get(image_url, timeout=30)
+    resp.raise_for_status()
+
+    img = Image.open(BytesIO(resp.content))
+    img.load()  # force full read (important for serverless)
     return img.convert("RGBA")
+
+
 
 def handler(job):
     inp = job.get("input", {}) or {}
 
-    image_b64 = inp.get("image_base64")
-    if not image_b64:
-        raise ValueError("Missing required input: image_base64 (base64-encoded PNG/JPG).")
+    image_url = inp.get("image_url")
+    if not image_url:
+        raise ValueError("Missing required input: image_url")
 
     # Match model card defaults/example. :contentReference[oaicite:3]{index=3}
     layers = int(inp.get("layers", 4))
@@ -171,7 +180,7 @@ def handler(job):
     seed = int(inp.get("seed", 777))
 
     pipe = load_pipe()
-    image = b64_to_pil_rgba(image_b64)
+    image = url_to_pil_rgba(image_url)
 
     gen = torch.Generator(device="cuda").manual_seed(seed)
 

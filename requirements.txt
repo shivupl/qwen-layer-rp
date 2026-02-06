@@ -5,6 +5,7 @@ git+https://github.com/huggingface/diffusers
 accelerate
 safetensors
 boto3
+requests
 
 
 
